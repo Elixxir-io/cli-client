@@ -20,7 +20,6 @@ import (
 	crypto "gitlab.com/elixxir/crypto/broadcast"
 	"gitlab.com/elixxir/crypto/fastRNG"
 	"gitlab.com/xx_network/crypto/csprng"
-	"gitlab.com/xx_network/primitives/netTime"
 	"time"
 )
 
@@ -43,6 +42,9 @@ var bCast = &cobra.Command{
 	Short: "Create or join broadcast channels.",
 	Args:  cobra.NoArgs,
 	Run: func(cmd *cobra.Command, args []string) {
+		// Initiate config file
+		initConfig(viper.GetString("config"))
+
 		// Initialize logging and print version
 		initLog(viper.GetString("logPath"), viper.GetInt("logLevel"))
 		jww.INFO.Printf(Version())
