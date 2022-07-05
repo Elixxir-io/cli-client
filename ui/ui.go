@@ -63,28 +63,30 @@ func (m *Manager) MakeUI() {
 				}
 
 				var message string
+				tsFmt := "\u001B[38;5;242m["
+				unFmt := "\u001B[38;5;255m"
 
 				switch r.Tag {
 				case client.Default:
-					usernameField := "\x1b[38;5;255m" + r.Username + "\x1b[0m"
-					timestampField := "\x1b[38;5;245m[sent " + r.Timestamp.Format("3:04:05 pm") + " / received " + netTime.Now().Format("3:04:05 pm") + "]\x1b[0m"
+					usernameField := unFmt + r.Username + "\x1b[0m"
+					timestampField := tsFmt + "sent " + r.Timestamp.Format("3:04:05 pm") + " / received " + netTime.Now().Format("3:04:05 pm") + "]\x1b[0m"
 					messageField := "\x1b[38;5;250m" + strings.TrimSpace(string(r.Message)) + "\x1b[0m"
 
 					message = usernameField + " " + timestampField + "\n" + messageField
 				case client.Join:
-					usernameField := "\x1b[38;5;255m" + r.Username + "\x1b[0m \x1B[38;5;250mhas joined the channel.\x1B[0m"
-					timestampField := "\x1b[38;5;245m[sent " + r.Timestamp.Format("3:04:05 pm") + " / received " + netTime.Now().Format("3:04:05 pm") + "]\x1b[0m"
+					usernameField := unFmt + r.Username + "\x1b[0m \x1B[38;5;250mhas joined the channel.\x1B[0m"
+					timestampField := tsFmt + "sent " + r.Timestamp.Format("3:04:05 pm") + " / received " + netTime.Now().Format("3:04:05 pm") + "]\x1b[0m"
 
 					message = usernameField + " " + timestampField
 				case client.Exit:
-					usernameField := "\x1b[38;5;255m" + r.Username + "\x1b[0m \x1B[38;5;250mhas left the channel.\x1B[0m"
-					timestampField := "\x1b[38;5;245m[sent " + r.Timestamp.Format("3:04:05 pm") + " / received " + netTime.Now().Format("3:04:05 pm") + "]\x1b[0m"
+					usernameField := unFmt + r.Username + "\x1b[0m \x1B[38;5;250mhas left the channel.\x1B[0m"
+					timestampField := tsFmt + "sent " + r.Timestamp.Format("3:04:05 pm") + " / received " + netTime.Now().Format("3:04:05 pm") + "]\x1b[0m"
 
 					message = usernameField + " " + timestampField
 				case client.Admin:
-					usernameField := "\x1b[48;5;160m[ADMIN]\x1b[0m"
-					timestampField := "\x1b[38;5;245m[sent " + r.Timestamp.Format("3:04:05 pm") + " / received " + netTime.Now().Format("3:04:05 pm") + "]\x1b[0m"
-					messageField := "\x1b[38;5;166m" + strings.TrimSpace(string(r.Message)) + "\x1b[0m"
+					usernameField := "\x1b[41m[ADMIN]\x1b[0m"
+					timestampField := tsFmt + "sent " + r.Timestamp.Format("3:04:05 pm") + " / received " + netTime.Now().Format("3:04:05 pm") + "]\x1b[0m"
+					messageField := "\x1b[31m" + strings.TrimSpace(string(r.Message)) + "\x1b[0m"
 
 					message = usernameField + " " + timestampField + "\n" + messageField
 				}
@@ -244,7 +246,7 @@ func (m *Manager) makeLayout() func(g *gocui.Gui) error {
 				v.SelBgColor = gocui.ColorGreen
 				v.SelFgColor = gocui.ColorBlack
 
-				_, err = fmt.Fprintf(v, "     Send as Admin     ")
+				_, err = fmt.Fprintf(v, "   ☐ Send as Admin     ")
 				if err != nil {
 					return err
 				}
@@ -385,8 +387,22 @@ func (m *Manager) toggleAdmin() func(*gocui.Gui, *gocui.View) error {
 		v.Highlight = !v.Highlight
 		if v.Highlight {
 			m.v.messageInput.Title = " Sending Message as \"ADMIN\" [F5] "
+			m.v.messageInput.FgColor = gocui.ColorRed
+
+			v.Clear()
+			_, err := fmt.Fprintf(v, "   ☑ Send as Admin     ")
+			if err != nil {
+				return err
+			}
 		} else {
 			m.v.messageInput.Title = " Sending Message as \"" + m.username + "\" [F5] "
+			m.v.messageInput.FgColor = gocui.ColorDefault
+
+			v.Clear()
+			_, err := fmt.Fprintf(v, "   ☐ Send as Admin     ")
+			if err != nil {
+				return err
+			}
 		}
 		return nil
 	}
