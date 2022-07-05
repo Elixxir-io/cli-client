@@ -118,7 +118,12 @@ func (m *Manager) makeLayout() func(g *gocui.Gui) error {
 	return func(g *gocui.Gui) error {
 		maxX, maxY := g.Size()
 
-		if v, err := g.SetView(titleBox, maxX-25, 0, maxX-1, maxY-7); err != nil {
+		deltaY := 7
+		if m.asymBroadcastFunc != nil {
+			deltaY = 10
+		}
+
+		if v, err := g.SetView(titleBox, maxX-25, 0, maxX-1, maxY-deltaY); err != nil {
 			if err != gocui.ErrUnknownView {
 				return err
 			}
