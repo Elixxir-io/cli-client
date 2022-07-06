@@ -10,7 +10,7 @@ package ui
 import (
 	"fmt"
 	"git.xx.network/elixxir/cli-client/client"
-	"github.com/jroimartin/gocui"
+	"github.com/awesome-gocui/gocui"
 	"github.com/pkg/errors"
 	jww "github.com/spf13/jwalterweatherman"
 	"gitlab.com/xx_network/primitives/netTime"
@@ -34,7 +34,7 @@ var (
 )
 
 func (m *Manager) MakeUI() {
-	g, err := gocui.NewGui(gocui.Output256)
+	g, err := gocui.NewGui(gocui.Output256, true)
 	if err != nil {
 		jww.FATAL.Panicf("Failed to make new GUI: %+v", err)
 	}
@@ -43,6 +43,7 @@ func (m *Manager) MakeUI() {
 	g.Cursor = true
 	g.Mouse = true
 	g.SelFgColor = gocui.ColorGreen
+	g.SelFrameColor = gocui.ColorGreen
 	g.Highlight = true
 
 	g.SetManagerFunc(m.makeLayout())
@@ -56,11 +57,6 @@ func (m *Manager) MakeUI() {
 			select {
 			case r := <-m.receivedBroadcastCh:
 				jww.INFO.Printf("Got broadcast: %+v", r)
-				channelFeedView, err := g.View(channelFeed)
-				if err != nil {
-					jww.ERROR.Printf("Failed to get view %q: %+v", channelFeed, err)
-					continue
-				}
 
 				var message string
 				tsFmt := "\u001B[38;5;242m["
@@ -93,13 +89,13 @@ func (m *Manager) MakeUI() {
 
 				message = message + "\n\n"
 
-				_, err = fmt.Fprintf(channelFeedView, message)
+				_, err = fmt.Fprintf(m.v.channelFeed, message)
 				if err != nil {
 					jww.ERROR.Print(err)
 					continue
 				}
 
-				channelFeedView.Autoscroll = true
+				m.v.channelFeed.Autoscroll = true
 			}
 		}
 	}()
@@ -123,7 +119,7 @@ func (m *Manager) makeLayout() func(g *gocui.Gui) error {
 			deltaY = 10
 		}
 
-		if v, err := g.SetView(titleBox, maxX-25, 0, maxX-1, maxY-deltaY); err != nil {
+		if v, err := g.SetView(titleBox, maxX-25, 0, maxX-1, maxY-deltaY, 0); err != nil {
 			if err != gocui.ErrUnknownView {
 				return err
 			}
@@ -136,8 +132,7 @@ func (m *Manager) makeLayout() func(g *gocui.Gui) error {
 				" Ctrl+C  exit\n"+
 				" Tab     Switch view\n"+
 				" ↑ ↓     Seek input\n"+
-				" Enter   Send message\n"+
-				" Ctrl+J  New Line\n"+
+				" Shft+Entr Send message\n"+
 				" F4      Channel feed\n"+
 				" F5      Message field\n\n"+
 				"\x1b[0m"+
@@ -151,7 +146,7 @@ func (m *Manager) makeLayout() func(g *gocui.Gui) error {
 			m.v.titleBox = v
 		}
 
-		if v, err := g.SetView(channelFeed, 0, 0, maxX-26, maxY-7); err != nil {
+		if v, err := g.SetView(channelFeed, 0, 0, maxX-26, maxY-7, 0); err != nil {
 			if err != gocui.ErrUnknownView {
 				return err
 			}
@@ -161,7 +156,7 @@ func (m *Manager) makeLayout() func(g *gocui.Gui) error {
 			m.v.channelFeed = v
 		}
 
-		if v, err := g.SetView(messageInput, 0, maxY-6, maxX-9, maxY-1); err != nil {
+		if v, err := g.SetView(messageInput, 0, maxY-6, maxX-9, maxY-1, 0); err != nil {
 			if err != gocui.ErrUnknownView {
 				return err
 			}
@@ -175,7 +170,7 @@ func (m *Manager) makeLayout() func(g *gocui.Gui) error {
 			m.v.messageInput = v
 		}
 
-		if v, err := g.SetView(messageCount, maxX-8, maxY-6, maxX-1, maxY-3); err != nil {
+		if v, err := g.SetView(messageCount, maxX-8, maxY-6, maxX-1, maxY-3, 0); err != nil {
 			if err != gocui.ErrUnknownView {
 				return err
 			}
@@ -188,33 +183,30 @@ func (m *Manager) makeLayout() func(g *gocui.Gui) error {
 			}
 
 			go func() {
-				ticker := time.NewTicker(100 * time.Millisecond)
+				ticker := time.NewTicker(50 * time.Millisecond)
 				for {
 					select {
 					case <-ticker.C:
 						g.Update(func(gui *gocui.Gui) error {
-							messageInputView, err := g.View(messageInput)
-							if err != nil {
-								return errors.Errorf("Failed to get view: %+v", err)
-							}
-							messageCountView, err := g.View(messageCount)
-							if err != nil {
-								return errors.Errorf("Failed to get view: %+v", err)
-							}
-
-							buff := strings.TrimSpace(messageInputView.Buffer())
+							buff := strings.TrimSpace(m.v.messageInput.Buffer())
 							n := len(buff)
 
 							var color string
-							if n >= m.symMaxMessageLen {
-								messageInputView.Editable = false
+							if (!m.isAdminMode() && n >= m.symMaxMessageLen) ||
+								(m.isAdminMode() && n >= m.asymMaxMessageLen) {
+								m.v.messageInput.Editable = false
 								color = "\x1b[0;31m"
 							} else {
-								messageInputView.Editable = true
+								m.v.messageInput.Editable = true
 							}
 
-							messageCountView.Clear()
-							_, err = fmt.Fprintf(messageCountView, color+charCountFmt+"\x1b[0m", n, m.symMaxMessageLen)
+							max := m.symMaxMessageLen
+							if m.isAdminMode() {
+								max = m.asymMaxMessageLen
+							}
+
+							m.v.messageCount.Clear()
+							_, err = fmt.Fprintf(m.v.messageCount, color+charCountFmt+"\x1b[0m", n, max)
 							if err != nil {
 								return errors.Errorf("Failed to write to view: %+v", err)
 							}
@@ -226,7 +218,7 @@ func (m *Manager) makeLayout() func(g *gocui.Gui) error {
 			m.v.messageCount = v
 		}
 
-		if v, err := g.SetView(sendButton, maxX-8, maxY-3, maxX-1, maxY-1); err != nil {
+		if v, err := g.SetView(sendButton, maxX-8, maxY-3, maxX-1, maxY-1, 0); err != nil {
 			if err != gocui.ErrUnknownView {
 				return err
 			}
@@ -235,7 +227,7 @@ func (m *Manager) makeLayout() func(g *gocui.Gui) error {
 			v.SelBgColor = gocui.ColorGreen
 			v.SelFgColor = gocui.ColorBlack
 
-			_, err = v.Write([]byte("\n Send "))
+			_, err = v.Write([]byte(" Send "))
 			if err != nil {
 				return err
 			}
@@ -243,15 +235,16 @@ func (m *Manager) makeLayout() func(g *gocui.Gui) error {
 		}
 
 		if m.asymBroadcastFunc != nil {
-			if v, err := g.SetView(adminBtn, maxX-25, maxY-9, maxX-1, maxY-7); err != nil {
+			if v, err := g.SetView(adminBtn, maxX-25, maxY-9, maxX-1, maxY-7, 0); err != nil {
 				if err != gocui.ErrUnknownView {
 					return err
 				}
+				v.Title = " [F6] "
 				v.Highlight = false
-				v.SelBgColor = gocui.ColorGreen
+				v.SelBgColor = gocui.ColorRed
 				v.SelFgColor = gocui.ColorBlack
 
-				_, err = fmt.Fprintf(v, "   ☐ Send as Admin     ")
+				_, err = fmt.Fprintf(v, "    ☐ Send as Admin    ")
 				if err != nil {
 					return err
 				}
@@ -274,7 +267,7 @@ func (m *Manager) initKeybindings(g *gocui.Gui) error {
 	}
 
 	err = g.SetKeybinding(
-		messageInput, gocui.KeyEnter, gocui.ModNone, m.readBuffs())
+		messageInput, gocui.KeyEnter, gocui.ModShift, m.readBuffs())
 	if err != nil {
 		return errors.Errorf(
 			"failed to set key binding for enter: %+v", err)
@@ -295,7 +288,7 @@ func (m *Manager) initKeybindings(g *gocui.Gui) error {
 	}
 
 	err = g.SetKeybinding(
-		messageInput, gocui.KeyCtrlJ, gocui.ModNone, addLine)
+		messageInput, gocui.KeyEnter, gocui.ModShift, addLine)
 	if err != nil {
 		return errors.Errorf(
 			"failed to set key binding for enter: %+v", err)
@@ -338,6 +331,12 @@ func (m *Manager) initKeybindings(g *gocui.Gui) error {
 	if err != nil {
 		return errors.Errorf(
 			"failed to set key binding for F5: %+v", err)
+	}
+
+	err = g.SetKeybinding("", gocui.KeyF6, gocui.ModNone, switchActiveTo(adminBtn))
+	if err != nil {
+		return errors.Errorf(
+			"failed to set key binding for F6: %+v", err)
 	}
 
 	for _, v := range viewArr {
@@ -384,27 +383,35 @@ func (m *Manager) initKeybindings(g *gocui.Gui) error {
 			"failed to set key binding for enter key: %+v", err)
 	}
 
+	err = g.SetKeybinding(adminBtn, gocui.KeySpace, gocui.ModNone, m.toggleAdmin())
+	if err != nil {
+		return errors.Errorf(
+			"failed to set key binding for enter key: %+v", err)
+	}
+
 	return nil
 }
 
 func (m *Manager) toggleAdmin() func(*gocui.Gui, *gocui.View) error {
 	return func(g *gocui.Gui, v *gocui.View) error {
+		m.toggleAdminMode()
 		v.Highlight = !v.Highlight
-		if v.Highlight {
+		if m.isAdminMode() {
 			m.v.messageInput.Title = " Sending Message as \"ADMIN\" [F5] "
 			m.v.messageInput.FgColor = gocui.ColorRed
+			m.v.messageInput.TitleColor = gocui.ColorRed
 
 			v.Clear()
-			_, err := fmt.Fprintf(v, "   ☑ Send as Admin     ")
+			_, err := fmt.Fprintf(v, "    ☑ Send as Admin    ")
 			if err != nil {
 				return err
 			}
 		} else {
 			m.v.messageInput.Title = " Sending Message as \"" + m.username + "\" [F5] "
 			m.v.messageInput.FgColor = gocui.ColorDefault
+			m.v.messageInput.TitleColor = gocui.ColorDefault
 
-			v.Clear()
-			_, err := fmt.Fprintf(v, "   ☐ Send as Admin     ")
+			_, err := fmt.Fprintf(v, "    ☐ Send as Admin    ")
 			if err != nil {
 				return err
 			}
@@ -455,18 +462,22 @@ func (m *Manager) readBuffs() func(*gocui.Gui, *gocui.View) error {
 
 		buff := strings.TrimSpace(m.v.messageInput.Buffer())
 
-		if len(buff) == 0 || len(buff) > m.symMaxMessageLen {
+		if len(buff) == 0 ||
+			(!m.isAdminMode() && len(buff) > m.symMaxMessageLen) ||
+			(m.isAdminMode() && len(buff) > m.asymMaxMessageLen) {
 			return nil
 		}
 
 		m.v.sendButton.Highlight = true
-		go func() {
-			time.Sleep(2 * time.Second)
-			m.v.sendButton.Highlight = false
+		defer func() {
+			go func() {
+				time.Sleep(500 * time.Millisecond)
+				m.v.sendButton.Highlight = false
+			}()
 		}()
 
 		var err error
-		if m.v.adminBtn != nil && m.v.adminBtn.Highlight {
+		if m.isAdminMode() {
 			err = m.asymBroadcastFunc(client.Admin, netTime.Now(), []byte(buff))
 		} else {
 			err = m.symBroadcastFunc(client.Default, netTime.Now(), []byte(buff))

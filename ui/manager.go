@@ -9,8 +9,9 @@ package ui
 
 import (
 	"git.xx.network/elixxir/cli-client/client"
-	"github.com/jroimartin/gocui"
+	"github.com/awesome-gocui/gocui"
 	crypto "gitlab.com/elixxir/crypto/broadcast"
+	"sync"
 )
 
 type Manager struct {
@@ -22,13 +23,15 @@ type Manager struct {
 	username            string
 	symMaxMessageLen    int
 	asymMaxMessageLen   int
+	adminMode           bool
+	adminModeMux        sync.RWMutex
 }
 
 func NewManager(ch *crypto.Channel,
 	receivedBroadcastCh chan client.ReceivedBroadcast,
 	symBroadcastFunc, asymBroadcastFunc client.BroadcastFn, username string,
 	symMaxMessageLen, asymMaxMessageLen int) *Manager {
-	return &Manager{
+	m := &Manager{
 		v:                   newViews(),
 		ch:                  ch,
 		receivedBroadcastCh: receivedBroadcastCh,
@@ -37,7 +40,22 @@ func NewManager(ch *crypto.Channel,
 		username:            username,
 		symMaxMessageLen:    symMaxMessageLen,
 		asymMaxMessageLen:   asymMaxMessageLen,
+		adminMode:           false,
 	}
+
+	return m
+}
+
+func (m *Manager) toggleAdminMode() {
+	m.adminModeMux.Lock()
+	defer m.adminModeMux.Unlock()
+	m.adminMode = !m.adminMode
+}
+
+func (m *Manager) isAdminMode() bool {
+	m.adminModeMux.RLock()
+	defer m.adminModeMux.RUnlock()
+	return m.adminMode
 }
 
 type views struct {
