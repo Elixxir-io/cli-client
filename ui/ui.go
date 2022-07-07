@@ -56,6 +56,11 @@ func (m *Manager) MakeUI() {
 		for {
 			select {
 			case r := <-m.receivedBroadcastCh:
+
+				for m.v.channelFeed == nil {
+					time.Sleep(250 * time.Millisecond)
+				}
+
 				jww.INFO.Printf("Got broadcast: %+v", r)
 
 				var message string
@@ -119,6 +124,11 @@ func (m *Manager) makeLayout() func(g *gocui.Gui) error {
 			deltaY = 10
 		}
 
+		adminControl := "\n"
+		if m.asymBroadcastFunc != nil {
+			adminControl = " F6      Admin toggle\n\n"
+		}
+
 		if v, err := g.SetView(titleBox, maxX-25, 0, maxX-1, maxY-deltaY, 0); err != nil {
 			if err != gocui.ErrUnknownView {
 				return err
@@ -132,9 +142,11 @@ func (m *Manager) makeLayout() func(g *gocui.Gui) error {
 				" Ctrl+C  exit\n"+
 				" Tab     Switch view\n"+
 				" ↑ ↓     Seek input\n"+
-				" Shft+Entr Send message\n"+
+				" Enter   Send message\n"+
+				" Ctrl+J  New line\n"+
 				" F4      Channel feed\n"+
-				" F5      Message field\n\n"+
+				" F5      Message field\n"+
+				adminControl+
 				"\x1b[0m"+
 				"Channel Info:\n"+
 				"\x1b[38;5;252mName:\n\x1b[38;5;248m"+m.ch.Name+"\x1b[0m\n\n"+
@@ -267,7 +279,7 @@ func (m *Manager) initKeybindings(g *gocui.Gui) error {
 	}
 
 	err = g.SetKeybinding(
-		messageInput, gocui.KeyEnter, gocui.ModShift, m.readBuffs())
+		messageInput, gocui.KeyEnter, gocui.ModNone, m.readBuffs())
 	if err != nil {
 		return errors.Errorf(
 			"failed to set key binding for enter: %+v", err)
@@ -288,10 +300,10 @@ func (m *Manager) initKeybindings(g *gocui.Gui) error {
 	}
 
 	err = g.SetKeybinding(
-		messageInput, gocui.KeyEnter, gocui.ModShift, addLine)
+		messageInput, gocui.KeyCtrlJ, gocui.ModNone, addLine)
 	if err != nil {
 		return errors.Errorf(
-			"failed to set key binding for enter: %+v", err)
+			"failed to set key binding for Ctrl+J: %+v", err)
 	}
 
 	err = g.SetKeybinding(
@@ -411,6 +423,7 @@ func (m *Manager) toggleAdmin() func(*gocui.Gui, *gocui.View) error {
 			m.v.messageInput.FgColor = gocui.ColorDefault
 			m.v.messageInput.TitleColor = gocui.ColorDefault
 
+			v.Clear()
 			_, err := fmt.Fprintf(v, "    ☐ Send as Admin    ")
 			if err != nil {
 				return err
